@@ -1,93 +1,127 @@
+import { not, update } from "ramda";
 import {
-  all,
-  any,
-  complement,
-  equals,
-  findIndex,
-  map,
-  none,
-  not,
-  update,
-} from "ramda";
-import { Board, GameState, GameAction } from "./types";
+  alreadyTaken,
+  checkForWin,
+  compMove,
+  movesLeft,
+  noMovesLeft,
+} from "./utils";
+import {
+  GameState,
+  GameAction,
+  GameActionTypes,
+  ResetTypes,
+  StartTypes,
+} from "./types";
 import initialState from "./initialState";
+import api from "./api";
 
-const equalsBlank = equals(" ");
-const alreadyTaken = complement(equalsBlank);
+type StateHandler = (state: GameState, action: GameAction) => GameState;
 
-const noMovesLeft = none(equalsBlank);
-const movesLeft = any(equalsBlank);
-
-const checkForWin = (board: Board, char: string) =>
-  any(
-    (winningSet) =>
-      all(
-        equals(char),
-        map((index) => board[index], winningSet)
-      ),
-    [
-      [0, 1, 2],
-      [0, 3, 6],
-      [0, 4, 8],
-      [1, 4, 7],
-      [2, 4, 6],
-      [2, 5, 8],
-      [3, 4, 5],
-      [6, 7, 8],
-    ]
-  );
-
-/**
- * exhaustively check for a win for either player
- */
-const compMove = (board: Board, compToken: string, usersToken: string) => {
-  let defensiveMove = -1;
-  for (let candidate = 0; candidate < board.length; ++candidate) {
-    if (alreadyTaken(board[candidate])) continue;
-    if (checkForWin(update(candidate, compToken, board), compToken)) {
-      return candidate;
-    }
-    if (checkForWin(update(candidate, usersToken, board), usersToken)) {
-      defensiveMove = candidate;
-    }
-  }
-  return defensiveMove >= 0 ? defensiveMove : findIndex(equalsBlank, board);
+const changeOpponent: StateHandler = (_, { payload }) => {
+  const leavingGameRoom = payload === ResetTypes.LeaveRoom;
+  console.log({ changeOpponent: leavingGameRoom });
+  if (not(leavingGameRoom)) api.findGame();
+  else api.leaveGame();
+  return {
+    ...initialState,
+    gameOver: !leavingGameRoom,
+    opponentIsComp: leavingGameRoom,
+    usersTurn: leavingGameRoom,
+    waiting: !leavingGameRoom,
+  };
 };
 
-const reducer = (state: GameState, action: GameAction): GameState => {
+const closeError: StateHandler = (state) => ({
+  ...state,
+  error: undefined,
+});
+
+const move: StateHandler = (state, action) => {
+  if (not(state.usersTurn)) return state;
   const [board] = state.game;
   const index = action.payload;
-
-  if (action.type === "move") {
-    if (alreadyTaken(board[index])) return state;
-    const newBoard = update(index, state.usersToken, board);
-    const userWon = checkForWin(newBoard, state.usersToken);
-    const game = [
-      not(userWon) && state.opponentIsComp && movesLeft(newBoard)
-        ? update(
-            compMove(newBoard, state.opponentsToken, state.usersToken),
-            state.opponentsToken,
-            newBoard
-          )
-        : newBoard,
-      ...state.game,
-    ];
-    return {
-      ...state,
-      game,
-      gameOver:
-        userWon ||
-        checkForWin(game[0], state.opponentsToken) ||
-        noMovesLeft(newBoard),
-      usersTurn: state.opponentIsComp,
-    };
+  if (alreadyTaken(board[index])) return state;
+  const newBoard = update(index, state.usersToken, board);
+  const userWon = checkForWin(newBoard, state.usersToken);
+  const game = [
+    not(userWon) && state.opponentIsComp && movesLeft(newBoard)
+      ? update(
+          compMove(newBoard, state.opponentsToken, state.usersToken),
+          state.opponentsToken,
+          newBoard
+        )
+      : newBoard,
+    ...state.game,
+  ];
+  const gameOver =
+    userWon ||
+    checkForWin(game[0], state.opponentsToken) ||
+    noMovesLeft(newBoard);
+  if (not(state.opponentIsComp)) {
+    api.move(index);
   }
-
-  if (action.type === "reset") {
-    return initialState;
-  }
-
-  return state;
+  return {
+    ...state,
+    game,
+    gameOver,
+    usersTurn: state.opponentIsComp,
+  };
 };
+
+const receiveMove: StateHandler = (state, action) => {
+  const [board] = state.game;
+  const index = action.payload;
+  const newBoard = update(index, state.opponentsToken, board);
+  const gameOver =
+    checkForWin(newBoard, state.opponentsToken) || noMovesLeft(newBoard);
+  return {
+    ...state,
+    game: [newBoard, ...state.game],
+    gameOver,
+    usersTurn: true,
+  };
+};
+
+const reset: StateHandler = (state, { payload }) => {
+  if (not(state.opponentIsComp)) {
+    if (payload === ResetTypes.StayInRoom) api.reset();
+    if (payload === ResetTypes.LeaveRoom) api.leaveGame();
+  }
+  return {
+    ...initialState,
+    gameOver: !state.opponentIsComp,
+    opponentIsComp: state.opponentIsComp,
+    usersTurn: state.opponentIsComp,
+    waiting: !state.opponentIsComp,
+  };
+};
+
+const start: StateHandler = (state, { payload }) => ({
+  ...initialState,
+  opponentIsComp: false,
+  gameOver: false,
+  usersTurn: payload === StartTypes.UsersTurn,
+  waiting: false,
+});
+
+const wait: StateHandler = (state, { error }) => ({
+  ...state,
+  error,
+  gameOver: true,
+  usersTurn: false,
+  waiting: true,
+});
+
+const reducer: StateHandler = (state, action) =>
+  ({
+    [GameActionTypes.ChangeOpponent]: changeOpponent,
+    [GameActionTypes.CloseError]: closeError,
+    [GameActionTypes.Move]: move,
+    [GameActionTypes.ReceiveMove]: receiveMove,
+    [GameActionTypes.Reset]: reset,
+    [GameActionTypes.Start]: start,
+    [GameActionTypes.Wait]: wait,
+  }[action.type](state, action));
 
 export default reducer;

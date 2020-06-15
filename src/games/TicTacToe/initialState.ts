@@ -9,7 +9,8 @@ const initialState: GameState = {
   opponentIsComp: true,
   opponentsToken: "O",
   usersToken: "X",
-  usersTurn: false,
+  usersTurn: true,
+  waiting: false,
 };
 
 export default initialState;

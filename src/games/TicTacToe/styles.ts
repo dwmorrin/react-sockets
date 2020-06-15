@@ -7,6 +7,9 @@ const useStyles = makeStyles({
     height: 300,
     width: 400,
   },
+  activePlayer: {
+    backgroundColor: "green",
+  },
   square: {
     width: "33%",
   },
@@ -16,6 +19,10 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "center",
     height: 100,
+  },
+  topbar: {
+    display: "flex",
+    justifyContent: "space-around",
   },
 });
 
