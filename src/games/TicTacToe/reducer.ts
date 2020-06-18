@@ -20,7 +20,6 @@ type StateHandler = (state: GameState, action: GameAction) => GameState;
 
 const changeOpponent: StateHandler = (_, { payload }) => {
   const leavingGameRoom = payload === ResetTypes.LeaveRoom;
-  console.log({ changeOpponent: leavingGameRoom });
   if (not(leavingGameRoom)) api.findGame();
   else api.leaveGame();
   return {
@@ -37,7 +36,7 @@ const closeError: StateHandler = (state) => ({
   error: undefined,
 });
 
-const move: StateHandler = (state, action) => {
+export const move: StateHandler = (state, action) => {
   if (not(state.usersTurn)) return state;
   const [board] = state.game;
   const index = action.payload;
@@ -97,7 +96,7 @@ const reset: StateHandler = (state, { payload }) => {
   };
 };
 
-const start: StateHandler = (state, { payload }) => ({
+const start: StateHandler = (_, { payload }) => ({
   ...initialState,
   opponentIsComp: false,
   gameOver: false,
